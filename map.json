@@ -1,0 +1,89 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "width": 800,
+  "height": 400,
+  "title": "Income Distribution Across Australian SA2 Regions",
+  "data": {
+    "url": "data/abs_sa2_boundaries.geojson",
+    "format": { "type": "json", "property": "features" }
+  },
+  "projection": { "type": "mercator", "center": [134, -25], "scale": 1000, "translate": [400, 200] },
+  "transform": [
+    { "calculate": "datum.properties && datum.properties.SA2_CODE21 ? ('' + datum.properties.SA2_CODE21) : ''", "as": "sa2_key" },
+    {
+      "lookup": "sa2_key",
+      "from": {
+        "data": {
+          "url": "data/census_sa2_clean.csv",
+          "format": { "type": "csv", "parse": { "SA2_CODE21": "string", "Median_tot_prsnl_inc_weekly": "number", "Median_rent_weekly": "number" } }
+        },
+        "key": "SA2_CODE21",
+        "fields": ["Median_tot_prsnl_inc_weekly", "Median_rent_weekly"]
+      }
+    },
+    { "calculate": "toNumber(datum.Median_tot_prsnl_inc_weekly)", "as": "Median_inc_num" },
+    { "calculate": "toNumber(datum.Median_rent_weekly)", "as": "Median_rent_num" }
+  ],
+  "layer": [
+    {
+      "mark": { "type": "geoshape", "fill": "#f2f2f2", "stroke": "#999", "strokeWidth": 0.5 },
+      "encoding": {
+        "tooltip": [
+          { "field": "properties.SA2_NAME21", "type": "nominal", "title": "Region" },
+          { "field": "Median_inc_num", "type": "quantitative", "title": "Median Income ($/week)", "format": ",.0f" },
+          { "field": "Median_rent_num", "type": "quantitative", "title": "Median Rent ($/week)", "format": ",.0f" }
+        ]
+      }
+    },
+    {
+      "transform": [ { "filter": "isFinite(datum.Median_inc_num)" } ],
+      "mark": { "type": "geoshape", "stroke": "#ffffff", "strokeWidth": 0.2, "opacity": 0.85 },
+      "encoding": {
+        "color": {
+          "field": "Median_inc_num",
+          "type": "quantitative",
+          "title": "Median Weekly Income ($)",
+          "scale": { "scheme": "viridis" }
+        },
+        "tooltip": [
+          { "field": "properties.SA2_NAME21", "type": "nominal", "title": "Region" },
+          { "field": "Median_inc_num", "type": "quantitative", "title": "Median Income ($/week)", "format": ",.0f" },
+          { "field": "Median_rent_num", "type": "quantitative", "title": "Median Rent ($/week)", "format": ",.0f" }
+        ]
+      }
+    },
+    {
+      "mark": { "type": "geoshape", "fill": "none", "stroke": "#222", "strokeWidth": 0.35 }
+    },
+    {
+      "_comment": "Point layer for centroids: visible on top so users can hover and see tooltips for every feature.",
+      "transform": [
+        { "calculate": "datum.geometry && datum.geometry.type === 'MultiPolygon' ? datum.geometry.coordinates[0][0][0][0] : (datum.geometry && datum.geometry.type === 'Polygon' ? datum.geometry.coordinates[0][0][0] : null)", "as": "_pt_lon" },
+        { "calculate": "datum.geometry && datum.geometry.type === 'MultiPolygon' ? datum.geometry.coordinates[0][0][0][1] : (datum.geometry && datum.geometry.type === 'Polygon' ? datum.geometry.coordinates[0][0][1] : null)", "as": "_pt_lat" }
+      ],
+      "mark": { "type": "point", "filled": true, "size": 60, "opacity": 0.95, "stroke": "#ffffff", "strokeWidth": 0.6 },
+      "encoding": {
+        "longitude": { "field": "_pt_lon", "type": "quantitative" },
+        "latitude": { "field": "_pt_lat", "type": "quantitative" },
+        "color": { "field": "Median_inc_num", "type": "quantitative", "scale": { "scheme": "viridis" }, "legend": null },
+        "tooltip": [
+          { "field": "properties.SA2_NAME21", "type": "nominal", "title": "Region" },
+          { "field": "properties.SA2_CODE21", "type": "nominal", "title": "SA2 code" },
+          { "field": "Median_inc_num", "type": "quantitative", "title": "Median Income ($/week)", "format": ",.0f" },
+          { "field": "Median_rent_num", "type": "quantitative", "title": "Median Rent ($/week)", "format": ",.0f" }
+        ]
+      }
+    },
+    {
+      "_comment": "Small text labels for regions (kept small to avoid overwhelming the map).",
+      "transform": [ { "filter": "isFinite(datum.Median_inc_num)" } ],
+      "mark": { "type": "text", "align": "left", "baseline": "middle", "dx": 6, "dy": -6, "fontSize": 9, "opacity": 0.8 },
+      "encoding": {
+        "longitude": { "field": "_pt_lon", "type": "quantitative" },
+        "latitude": { "field": "_pt_lat", "type": "quantitative" },
+        "text": { "field": "properties.SA2_NAME21", "type": "nominal" },
+        "color": { "value": "#222" }
+      }
+    }
+  ]
+}
