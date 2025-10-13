@@ -1,0 +1,106 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "width": 900,
+  "height": 400,
+  "title": "Income vs Rent Relationship by Age Demographics",
+  "data": {
+    "url": "__CSV_PATH__",
+    "format": {
+      "type": "csv",
+      "parse": {
+        "Median_tot_prsnl_inc_weekly": "number",
+        "Median_rent_weekly": "number",
+        "Median_age_persons": "number"
+      }
+    }
+  },
+  "params": [
+    {
+      "name": "age_group",
+      "value": "All",
+      "bind": {
+        "input": "select",
+        "options": ["All", "Young (< 35)", "Middle (35-50)", "Senior (> 50)"],
+        "name": "Age Group: "
+      }
+    }
+  ],
+  "transform": [
+    {
+      "calculate": "datum.Median_age_persons < 35 ? 'Young (< 35)' : datum.Median_age_persons < 50 ? 'Middle (35-50)' : 'Senior (> 50)'",
+      "as": "age_category"
+    },
+    {
+      "filter": "age_group == 'All' || datum.age_category == age_group"
+    }
+  ],
+  "layer": [
+    {
+      "mark": {"type": "circle", "opacity": 0.6},
+      "encoding": {
+        "x": {
+          "field": "Median_tot_prsnl_inc_weekly",
+          "type": "quantitative",
+          "title": "Median Weekly Income ($)",
+          "axis": {"format": ",.0f"}
+        },
+        "y": {
+          "field": "Median_rent_weekly",
+          "type": "quantitative",
+          "title": "Median Weekly Rent ($)",
+          "axis": {"format": ",.0f"}
+        },
+        "color": {
+          "field": "age_category",
+          "type": "nominal",
+          "title": "Age Group",
+          "scale": {
+            "domain": ["Young (< 35)", "Middle (35-50)", "Senior (> 50)"],
+            "range": ["#72c8e8", "#5b8c5a", "#e6956c"]
+          }
+        },
+        "size": {
+          "field": "Median_age_persons",
+          "type": "quantitative",
+          "scale": {"range": [50, 300]},
+          "title": "Median Age"
+        },
+        "tooltip": [
+          {"field": "SA2_CODE21", "type": "nominal", "title": "SA2 Code"},
+          {"field": "Median_tot_prsnl_inc_weekly", "type": "quantitative", "title": "Income ($/week)", "format": ",.0f"},
+          {"field": "Median_rent_weekly", "type": "quantitative", "title": "Rent ($/week)", "format": ",.0f"},
+          {"field": "Median_age_persons", "type": "quantitative", "title": "Median Age"}
+        ]
+      }
+    },
+    {
+      "mark": {
+        "type": "rule",
+        "color": "red",
+        "strokeDash": [6, 4]
+      },
+      "encoding": {
+        "y": {
+          "aggregate": "mean",
+          "field": "Median_rent_weekly"
+        }
+      }
+    },
+    {
+      "mark": {
+        "type": "text",
+        "align": "right",
+        "dx": -5,
+        "dy": -5,
+        "color": "red"
+      },
+      "encoding": {
+        "y": {
+          "aggregate": "mean",
+          "field": "Median_rent_weekly"
+        },
+        "text": {"value": "Average Rent"}
+      }
+    }
+  ]
+}

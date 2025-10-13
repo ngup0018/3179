@@ -1,0 +1,53 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Australian SA2 Census Analysis (Scatter Only)</title>
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background:#f5f5f5; }
+    .viz { background: #fff; padding: 20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.08); max-width:900px; margin:auto }
+    h1 { text-align:center }
+  </style>
+</head>
+<body>
+  <h1>Income vs Rent Analysis (Scatter)</h1>
+  <div class="viz">
+    <div id="chart"></div>
+  </div>
+
+<script>
+  // Robust chart loader: fetch spec with no-store, detect Git LFS pointer text and
+  // inject absolute CSV URL before parsing.
+  (async function() {
+    try {
+      const resp = await fetch('./js/chart.json', { cache: 'no-store' });
+      const specText = await resp.text();
+
+      if (specText.trim().startsWith('version https://git-lfs')) {
+        console.error('Chart spec appears to be a Git LFS pointer. The Pages site is serving a pointer file instead of the JSON spec. Ensure the file is committed to the repo (not LFS) or hosted as raw JSON.');
+        return;
+      }
+
+      const csvUrlAbsolute = new URL('data/census_sa2_clean.csv', window.location.href).href;
+      const fixedSpecText = specText.replace('__CSV_PATH__', csvUrlAbsolute);
+
+      let spec;
+      try {
+        spec = JSON.parse(fixedSpecText);
+      } catch (parseErr) {
+        console.error('Failed to parse chart spec JSON after CSV injection. Raw spec preview (first 400 chars):', fixedSpecText.slice(0,400));
+        throw parseErr;
+      }
+
+      await vegaEmbed('#chart', spec);
+      console.log('Chart visualization loaded successfully');
+    } catch (err) {
+      console.error('Chart embed error:', err);
+    }
+  })();
+</script>
+</body>
+</html>
