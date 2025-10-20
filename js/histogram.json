@@ -1,0 +1,70 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "width": 900,
+  "height": 300,
+  "title": {
+    "text": "Distribution of Median weekly income (SA2)",
+    "subtitle": "Zeros / missing values removed. Red line = median, orange = mean",
+    "subtitleFontSize": 11
+  },
+  "data": {
+    "url": "data/census_sa2_clean.csv",
+    "format": { "type": "csv", "parse": { "Median_tot_prsnl_inc_weekly": "number" } }
+  },
+  "transform": [
+    { "filter": "isValid(datum.Median_tot_prsnl_inc_weekly) && datum.Median_tot_prsnl_inc_weekly > 0" }
+  ],
+  "layer": [
+    {
+      "mark": { "type": "bar", "cornerRadius": 2 },
+      "encoding": {
+        "x": {
+          "field": "Median_tot_prsnl_inc_weekly",
+          "type": "quantitative",
+          "bin": { "maxbins": 30 },
+          "title": "Median weekly income ($)",
+          "axis": { "format": "$,~s" }
+        },
+        "y": {
+          "aggregate": "count",
+          "type": "quantitative",
+          "title": "Number of SA2 regions"
+        },
+        "tooltip": [
+          { "field": "Median_tot_prsnl_inc_weekly", "type": "quantitative", "title": "Income (bin sample)" },
+          { "aggregate": "count", "type": "quantitative", "title": "Count" }
+        ],
+        "color": { "value": "#2f6f9f" }
+      }
+    },
+
+    {
+      "transform": [
+        { "filter": "isValid(datum.Median_tot_prsnl_inc_weekly)" },
+        { "aggregate": [ { "op": "median", "field": "Median_tot_prsnl_inc_weekly", "as": "median" } ] }
+      ],
+      "mark": { "type": "rule", "color": "red", "strokeWidth": 2 },
+      "encoding": {
+        "x": { "field": "median", "type": "quantitative" },
+        "tooltip": [{ "field": "median", "type": "quantitative", "title": "Median income" }]
+      }
+    },
+
+    {
+      "transform": [
+        { "filter": "isValid(datum.Median_tot_prsnl_inc_weekly)" },
+        { "aggregate": [ { "op": "mean", "field": "Median_tot_prsnl_inc_weekly", "as": "mean" } ] }
+      ],
+      "mark": { "type": "rule", "color": "orange", "strokeWidth": 2, "strokeDash": [4,4] },
+      "encoding": {
+        "x": { "field": "mean", "type": "quantitative" },
+        "tooltip": [{ "field": "mean", "type": "quantitative", "title": "Mean income" }]
+      }
+    }
+  ],
+  "config": {
+    "axis": { "labelFontSize": 11, "titleFontSize": 12 },
+    "view": { "stroke": "transparent" },
+    "background": "#ffffff"
+  }
+}
