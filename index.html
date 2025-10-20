@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Australian SA2 Census Analysis Dashboard</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 16px; }
+    .viz { background:#fff; border-radius:6px; padding:16px; box-shadow:0 0 0 1px #e6e6e6 inset; margin-bottom:24px; }
+    #map { width:100%; max-width:1100px; height:520px; margin: 0 auto; }
+    #chart { width:100%; max-width:900px; height:400px; margin: 0 auto; }
+    #hist { width:100%; max-width:900px; height:300px; margin: 0 auto; }
+    #afford { width:100%; max-width:900px; height:420px; margin: 0 auto; }
+  </style>
+</head>
+<body>
+  <h1>Australian SA2 Census Analysis Dashboard</h1>
+
+  <div class="viz">
+    <h3>Income Distribution Across SA2 Regions</h3>
+    <div id="map"></div>
+  </div>
+
+  <div class="viz">
+    <h3>Income vs Rent Analysis</h3>
+    <div id="chart"></div>
+  </div>
+
+  <div class="viz">
+    <h3>Income distribution</h3>
+    <div id="hist"></div>
+  </div>
+
+  <div class="viz">
+    <h3>Affordability: Ranked SA2s (rent / income)</h3>
+    <div id="afford"></div>
+  </div>
+
+  <script>
+  // Utility: centroid from polygon ring (average lon/lat)
+  function ringCentroid(ring) {
+    let cx = 0, cy = 0, n = 0;
+    for (const pt of ring) {
+      if (!isFinite(pt[0]) || !isFinite(pt[1])) continue;
+      cx += pt[0]; cy += pt[1]; n++;
+    }
+    return n ? [cx / n, cy / n] : null;
+  }
+
+  async function loadAndRenderMap() {
+    try {
+      const [geoResp, csvResp] = await Promise.all([
+        fetch('data/abs_sa2_boundaries_simplified.geojson'),
+        fetch('data/census_sa2_with_names.csv')
+      ]);
+      const geo = await geoResp.json();
+      const csvText = await csvResp.text();
+
+      const lines = csvText.split(/\r?\n/).filter(Boolean);
+      const header = lines[0].split(',');
+      const rows = lines.slice(1).map(l => l.split(','));
+      const csvBySa2 = new Map();
+      rows.forEach(r => {
+        const obj = {};
+        for (let i = 0; i < header.length; i++) obj[header[i]] = r[i];
+        if (obj.SA2_CODE21) csvBySa2.set(String(obj.SA2_CODE21).trim(), obj);
+      });
+
+      const points = [];
+      for (const f of geo.features) {
+        const props = f.properties || {};
+        const sa2 = String(props.SA2_CODE21 == null ? '' : props.SA2_CODE21).trim();
+        let ring = null;
+        if (f.geometry && f.geometry.type === 'Polygon' && Array.isArray(f.geometry.coordinates[0])) {
+          ring = f.geometry.coordinates[0];
+        } else if (f.geometry && f.geometry.type === 'MultiPolygon' && Array.isArray(f.geometry.coordinates[0])) {
+          ring = f.geometry.coordinates[0][0];
+        }
+        const c = ring ? ringCentroid(ring) : null;
+        const csvObj = csvBySa2.get(sa2) || {};
+        const income = csvObj.Median_tot_prsnl_inc_weekly ? Number(csvObj.Median_tot_prsnl_inc_weekly) : null;
+        const rent = csvObj.Median_rent_weekly ? Number(csvObj.Median_rent_weekly) : null;
+        const name = props.SA2_NAME21 || csvObj.SA2_NAME21 || '';
+        if (c) {
+          points.push({
+            SA2_CODE21: sa2,
+            SA2_NAME: name,
+            lon: c[0],
+            lat: c[1],
+            Median_tot_prsnl_inc_weekly: income,
+            Median_rent_weekly: rent
+          });
+        }
+      }
+
+      const mapSpec = {
+        "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+        "width": 1100,
+        "height": 520,
+        "title": "Income Distribution Across Australian SA2 Regions (centroids)",
+        "data": { "values": points },
+        "projection": { "type": "mercator", "center": [134.0, -26.0], "scale": 900 },
+        "selection": {
+          "hover": { "type": "single", "on": "mouseover", "clear": "mouseout" },
+          "pinned": { "type": "multi", "on": "click", "clear": "dblclick" }
+        },
+        "mark": { "type": "circle", "opacity": 0.8, "stroke": "#0f2d3a", "strokeWidth": 0.6 },
+        "encoding": {
+          "longitude": { "field": "lon", "type": "quantitative" },
+          "latitude": { "field": "lat", "type": "quantitative" },
+          "size": {
+            "field": "Median_tot_prsnl_inc_weekly",
+            "type": "quantitative",
+            "scale": { "range": [10, 300] },
+            "title": "Median weekly income (size)"
+          },
+          "color": {
+            "field": "Median_tot_prsnl_inc_weekly",
+            "type": "quantitative",
+            "scale": { "scheme": "blues" },
+            "title": "Median weekly income ($)",
+            "legend": { "orient": "right" }
+          },
+          "opacity": {
+            "condition": [
+              { "selection": "pinned", "value": 1 },
+              { "selection": "hover", "value": 1 }
+            ],
+            "value": 0.25
+          },
+          "tooltip": [
+            { "field": "SA2_NAME", "type": "nominal", "title": "SA2" },
+            { "field": "SA2_CODE21", "type": "nominal", "title": "SA2 code" },
+            { "field": "Median_tot_prsnl_inc_weekly", "type": "quantitative", "title": "Median income" },
+            { "field": "Median_rent_weekly", "type": "quantitative", "title": "Median rent" }
+          ]
+        }
+      };
+
+      await vegaEmbed('#map', mapSpec, { renderer: 'svg', actions: false });
+      console.log('Map (centroid) loaded, points:', points.length);
+    } catch (err) {
+      console.error('Map load/render error:', err);
+    }
+  }
+
+  // embed cleaned scatter/chart (replaces previous embedChart IIFE)
+  (async function embedCleanedChartSafe(){
+    try {
+      const r = await fetch('./js/chart.json?ts=' + Date.now(), { cache: 'no-store' });
+      const txt = await r.text();
+      if (!txt || txt.startsWith('version ')) { console.warn('chart.json missing or LFS pointer — skipping chart embed'); return; }
+
+      const csvUrl = new URL('data/census_sa2_with_names.csv', location.href).href;
+      const spec = JSON.parse(txt.replace('__CSV_PATH__', csvUrl));
+
+      // ensure tooltip contains SA2_NAME21
+      function ensureTooltip(enc) {
+        if (!enc || typeof enc !== 'object') return;
+        const t = enc.tooltip;
+        const arr = Array.isArray(t) ? t.slice() : (t ? [t] : []);
+        const hasName = arr.some(entry => {
+          if (!entry) return false;
+          if (typeof entry === 'string') return /sa2_name/i.test(entry);
+          if (entry.field) return /sa2_name/i.test(String(entry.field));
+          return false;
+        });
+        if (!hasName) arr.unshift({ field: 'SA2_NAME21', type: 'nominal', title: 'SA2 region' });
+        enc.tooltip = arr;
+      }
+
+      // detect constant text layers (e.g., repeated "Average Rent") and drop them
+      function isConstantTextLayer(layer) {
+        if (!layer || !layer.mark) return false;
+        const mk = layer.mark;
+        const mkType = (mk && mk.type) ? String(mk.type).toLowerCase() : String(mk).toLowerCase();
+        if (mkType !== 'text') return false;
+        const textEnc = (layer.encoding && layer.encoding.text) || mk.text || mk.value;
+        if (!textEnc) return false;
+        if (typeof textEnc === 'string') return /average/i.test(textEnc) || textEnc.trim().length === 0;
+        if (textEnc && textEnc.value && typeof textEnc.value === 'string') return /average/i.test(textEnc.value);
+        return false;
+      }
+
+      // collapse per-row rule layers into a single aggregated rule (mean) so we don't get one line per data point
+      function collapseRuleLayer(layer) {
+        if (!layer || !layer.mark) return layer;
+        const mkType = (layer.mark.type || layer.mark).toString().toLowerCase();
+        if (mkType !== 'rule') return layer;
+
+        const enc = layer.encoding || {};
+        // find a field used in x/x2/y/y2
+        const candKeys = ['x','x2','y','y2'];
+        let primaryField = null;
+        for (const k of candKeys) {
+          const e = enc[k];
+          if (e && e.field) { primaryField = e.field; break; }
+        }
+        // if no field (likely annotation with constant value), drop layer
+        if (!primaryField) return null;
+
+        // build an aggregated layer that computes mean of the primary field
+        const newLayer = JSON.parse(JSON.stringify(layer));
+        newLayer.transform = newLayer.transform || [];
+        const aggField = '_agg_' + primaryField.replace(/\W+/g,'_');
+        newLayer.transform.push({ aggregate: [{ op: 'mean', field: primaryField, as: aggField }] });
+
+        // replace encoding references to the aggregated field
+        for (const k of candKeys) {
+          if (newLayer.encoding && newLayer.encoding[k] && newLayer.encoding[k].field === primaryField) {
+            newLayer.encoding[k] = Object.assign({}, newLayer.encoding[k], { field: aggField });
+          }
+        }
+        // ensure tooltip doesn't repeat unnecessary values
+        if (newLayer.encoding) ensureTooltip(newLayer.encoding);
+        return newLayer;
+      }
+
+      // recursive cleaner
+      function cleanSpec(node) {
+        if (!node || typeof node !== 'object') return node;
+
+        // inject tooltip on this node if it has encoding
+        if (node.encoding && typeof node.encoding === 'object') ensureTooltip(node.encoding);
+
+        // if node has layer array, filter and collapse as needed
+        if (Array.isArray(node.layer)) {
+          const newLayers = [];
+          for (const L of node.layer) {
+            if (!L) continue;
+            if (isConstantTextLayer(L)) continue; // drop repeated annotation texts
+            const collapsed = collapseRuleLayer(L);
+            if (collapsed) newLayers.push(collapsed);
+          }
+          node.layer = newLayers;
+        }
+
+        // recurse into child objects/arrays
+        for (const k of Object.keys(node)) {
+          const v = node[k];
+          if (Array.isArray(v)) v.forEach(item => cleanSpec(item));
+          else if (v && typeof v === 'object') cleanSpec(v);
+        }
+        return node;
+      }
+
+      cleanSpec(spec);
+
+      // final safety: remove any remaining rule marks that likely came from per-row rules without transforms
+      if (Array.isArray(spec.layer)) {
+        spec.layer = spec.layer.filter(l => !(l && l.mark && String((l.mark.type||'')).toLowerCase() === 'rule' && (!l.transform || l.transform.length === 0)));
+      }
+
+      await vegaEmbed('#chart', spec, { renderer:'svg', actions:false });
+      console.log('Cleaned chart embedded (aggregated rules removed, constant texts dropped, SA2_NAME21 tooltips added)');
+    } catch (err) {
+      console.error('Chart embed error:', err);
+    }
+  })();
+
+  // embed histogram from external spec (js/histogram.json) - safer to keep spec external
+  (async function embedHistogram(){
+    try {
+      const t = await fetch('./js/histogram.json?ts=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
+      const spec = JSON.parse(t);
+      await vegaEmbed('#hist', spec, { renderer:'svg', actions:false });
+      console.log('Histogram loaded');
+    } catch (e) {
+      console.error('Histogram embed error:', e);
+    }
+  })();
+
+  // inline affordability lollipop renderer (robust)
+  {
+  (async function renderAffordabilityInline(){
+    try {
+      const text = await fetch('data/census_sa2_with_names.csv').then(r => r.text());
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      const hdr = lines[0].split(',');
+      const rows = lines.slice(1).map(l => l.split(','));
+      const objs = rows.map(r => {
+        const o = {};
+        for (let i = 0; i < hdr.length; i++) o[hdr[i]] = r[i];
+        return o;
+      }).filter(d => d && d.Median_tot_prsnl_inc_weekly && d.Median_rent_weekly);
+
+      const vals = objs.map(d => {
+        const inc = Number(d.Median_tot_prsnl_inc_weekly || NaN);
+        const rent = Number(d.Median_rent_weekly || NaN);
+        return isFinite(inc) && inc > 0 && isFinite(rent) ? {
+          SA2_NAME21: (d.SA2_NAME21 || d.SA2_NAME || '').trim(),
+          SA2_CODE21: String(d.SA2_CODE21 || ''),
+          Median_tot_prsnl_inc_weekly: inc,
+          Median_rent_weekly: rent,
+          rent_income_ratio: rent / inc
+        } : null;
+      }).filter(Boolean);
+
+      if (!vals.length) {
+        document.getElementById('afford').innerText = 'No affordability data';
+        console.warn('Affordability: no usable rows');
+        return;
+      }
+
+      // pick top 10 least affordable and ensure names are not empty
+      vals.sort((a,b) => b.rent_income_ratio - a.rent_income_ratio);
+      const top = vals.slice(0,10).map(d => {
+        return { ...d, SA2_LABEL: d.SA2_NAME21 || d.SA2_CODE21 };
+      });
+
+      // x-axis domain with padding, cap to 200% for readability
+      const maxRatio = Math.max(...top.map(d => d.rent_income_ratio));
+      const domainMax = Math.min(Math.ceil(maxRatio * 1.15 * 100) / 100, 2.0);
+
+      const spec = {
+        "$schema":"https://vega.github.io/schema/vega-lite/v5.json",
+        "width":900,
+        "height": Math.max(360, top.length * 36),
+        "title": {
+          "text":"Affordability — Top 10 least affordable SA2s",
+          "subtitle":"Rent as % of personal income (higher → less affordable)"
+        },
+        "data": { "values": top },
+        "encoding": {
+          "y": {
+            "field":"SA2_LABEL",
+            "type":"nominal",
+            "sort": {"field":"rent_income_ratio","order":"descending"},
+            "axis": { "title":"SA2 region", "labelLimit": 260, "labelFontSize": 11 }
+          },
+          "x": {
+            "field":"rent_income_ratio",
+            "type":"quantitative",
+            "scale": { "domain": [0, domainMax] },
+            "axis": { "format": ".0%", "title": "Rent / Income (percent)" }
+          }
+        },
+        "layer": [
+          {
+            "mark": { "type": "bar", "cornerRadius": 3 },
+            "encoding": {
+              "color": {
+                "condition": { "test": "datum.rent_income_ratio >= 0.30", "value": "#d9534f" },
+                "value": "#4f83cc"
+              },
+              "tooltip": [
+                { "field":"SA2_LABEL","type":"nominal","title":"SA2" },
+                { "field":"SA2_CODE21","type":"nominal","title":"SA2 code" },
+                { "field":"Median_rent_weekly","type":"quantitative","title":"Median rent ($)", "format": "$,.0f" },
+                { "field":"Median_tot_prsnl_inc_weekly","type":"quantitative","title":"Median income ($)", "format": "$,.0f" },
+                { "field":"rent_income_ratio","type":"quantitative","title":"Rent/Income (fraction)", "format": ".1%" }
+              ]
+            }
+          },
+          {
+            "mark": { "type": "text", "baseline":"middle", "dx":6, "fontSize": 11, "color":"#222" },
+            "encoding": {
+              "text": { "field":"rent_income_ratio", "type":"quantitative", "format":".1%" },
+              "x": { "field":"rent_income_ratio", "type":"quantitative" },
+              "y": { "field":"SA2_LABEL", "type":"nominal", "sort": {"field":"rent_income_ratio","order":"descending"} }
+            }
+          }
+        ],
+        "config": {
+          "view": { "stroke": "transparent" },
+          "background": "#ffffff",
+          "axis": { "labelFontSize": 11, "titleFontSize": 12 }
+        }
+      };
+
+      await vegaEmbed('#afford', spec, { renderer:'svg', actions: false });
+      console.log('Affordability improved inline loaded, rows:', top.length);
+    } catch (e) {
+      console.error('Affordability inline error:', e);
+    }
+  })();
+}
+  // start map after other embeds
+  loadAndRenderMap();
+  </script>
+</body>
+</html>

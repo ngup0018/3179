@@ -1,0 +1,63 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "width": 880,
+  "height": 480,
+  "title": "Income Distribution Across Australian SA2 Regions",
+  "data": {
+    "name": "geo",
+    "url": "data/abs_sa2_boundaries_simplified.geojson",
+    "format": { "type": "json" }
+  },
+  "transform": [
+    {
+      "calculate": "(datum.properties && datum.properties.SA2_CODE21) ? toString(datum.properties.SA2_CODE21) : null",
+      "as": "sa2_code"
+    },
+    {
+      "lookup": "sa2_code",
+      "from": {
+        "data": {
+          "url": "data/census_sa2_clean.csv",
+          "format": {
+            "type": "csv",
+            "parse": {
+              "SA2_CODE21": "string",
+              "Median_tot_prsnl_inc_weekly": "number",
+              "Median_rent_weekly": "number"
+            }
+          }
+        },
+        "key": "SA2_CODE21",
+        "fields": ["Median_tot_prsnl_inc_weekly", "Median_rent_weekly"]
+      }
+    },
+    {
+      "calculate": "isValid(datum.Median_tot_prsnl_inc_weekly) ? datum.Median_tot_prsnl_inc_weekly : null",
+      "as": "_income"
+    }
+  ],
+  "projection": { "type": "mercator", "fit": "geo" },
+  "layer": [
+    {
+      "mark": { "type": "geoshape", "fill": "#ffffff", "stroke": "#66788a", "strokeWidth": 0.6 }
+    },
+    {
+      "mark": { "type": "geoshape", "opacity": 0.95 },
+      "encoding": {
+        "color": {
+          "condition": { "test": "datum._income == null", "value": "#eef6fb" },
+          "field": "_income",
+          "type": "quantitative",
+          "scale": { "scheme": "blues" },
+          "title": "Median weekly income ($)"
+        },
+        "tooltip": [
+          { "field": "properties.SA2_NAME21", "type": "nominal", "title": "SA2" },
+          { "field": "properties.SA2_CODE21", "type": "nominal", "title": "SA2 code" },
+          { "field": "Median_tot_prsnl_inc_weekly", "type": "quantitative", "title": "Median income" }
+        ]
+      }
+    }
+  ],
+  "config": { "view": { "stroke": "transparent", "fill": "#f7fbff" }, "background": "#f7fbff" }
+}

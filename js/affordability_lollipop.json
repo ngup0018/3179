@@ -1,0 +1,85 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "width": 900,
+  "height": 420,
+  "title": {
+    "text": "Affordability (Median rent / Median personal income) — Ranked SA2s",
+    "subtitle": "Select Top = least affordable (highest ratio) or Bottom = most affordable (lowest ratio).",
+    "subtitleFontSize": 11
+  },
+  "params": [
+    {
+      "name": "which",
+      "value": "top",
+      "bind": {
+        "input": "select",
+        "options": ["top", "bottom"],
+        "labels": ["Top (least affordable)", "Bottom (most affordable)"],
+        "name": "Show: "
+      }
+    }
+  ],
+  "data": {
+    "url": "data/census_sa2_clean.csv",
+    "format": {
+      "type": "csv",
+      "parse": {
+        "Median_tot_prsnl_inc_weekly": "number",
+        "Median_rent_weekly": "number",
+        "SA2_CODE21": "string",
+        "SA2_NAME21": "string"
+      }
+    }
+  },
+  "transform": [
+    { "filter": "isValid(datum.Median_tot_prsnl_inc_weekly) && isValid(datum.Median_rent_weekly) && datum.Median_tot_prsnl_inc_weekly > 0" },
+    { "calculate": "datum.Median_rent_weekly / datum.Median_tot_prsnl_inc_weekly", "as": "rent_income_ratio" },
+    { "window": [{ "op": "row_number", "as": "rank_desc" }], "sort": [{ "field": "rent_income_ratio", "order": "descending" }] },
+    { "window": [{ "op": "row_number", "as": "rank_asc" }], "sort": [{ "field": "rent_income_ratio", "order": "ascending" }] },
+    {
+      "filter": "(params.which === 'top' && datum.rank_desc <= 10) || (params.which === 'bottom' && datum.rank_asc <= 10)"
+    },
+    { "calculate": "round(datum.rent_income_ratio * 1000)/10", "as": "ratio_pct_1dec" }  
+  ],
+  "layer": [
+    {
+      "mark": { "type": "rule", "color": "#c7d0d6", "strokeWidth": 2 },
+      "encoding": {
+        "y": {
+          "field": "SA2_NAME21",
+          "type": "nominal",
+          "title": null,
+          "sort": { "field": "rent_income_ratio", "order": "descending" }
+        },
+        "x": { "value": 0 },
+        "x2": { "field": "rent_income_ratio" }
+      }
+    },
+    {
+      "mark": { "type": "circle", "filled": true, "stroke": "#0f2d3a", "strokeWidth": 0.6 },
+      "encoding": {
+        "y": { "field": "SA2_NAME21", "type": "nominal", "sort": { "field": "rent_income_ratio", "order": "descending" } },
+        "x": {
+          "field": "rent_income_ratio",
+          "type": "quantitative",
+          "title": "Rent / Income ratio (fraction)",
+          "axis": { "format": ".2f" }
+        },
+        "size": { "value": 80 },
+        "color": { "value": "#d9534f" },
+        "tooltip": [
+          { "field": "SA2_NAME21", "type": "nominal", "title": "SA2" },
+          { "field": "SA2_CODE21", "type": "nominal", "title": "SA2 code" },
+          { "field": "Median_rent_weekly", "type": "quantitative", "title": "Median rent ($)" },
+          { "field": "Median_tot_prsnl_inc_weekly", "type": "quantitative", "title": "Median income ($)" },
+          { "field": "ratio_pct_1dec", "type": "quantitative", "title": "Rent as % of income (1dp)" }
+        ]
+      }
+    }
+  ],
+  "config": {
+    "axis": { "labelFontSize": 11, "titleFontSize": 12 },
+    "view": { "stroke": "transparent" },
+    "background": "#ffffff"
+  }
+}
