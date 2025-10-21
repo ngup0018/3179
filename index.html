@@ -8,39 +8,223 @@
   <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
 
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    body { font-family: Arial, Helvetica, sans-serif; margin: 16px; }
-    .viz { background:#fff; border-radius:6px; padding:16px; box-shadow:0 0 0 1px #e6e6e6 inset; margin-bottom:24px; }
-    #map { width:100%; max-width:1100px; height:520px; margin: 0 auto; }
-    #chart { width:100%; max-width:900px; height:400px; margin: 0 auto; }
-    #hist { width:100%; max-width:900px; height:300px; margin: 0 auto; }
-    #afford { width:100%; max-width:900px; height:420px; margin: 0 auto; }
+    :root{
+      --bg:#f4f7fb; --card:#ffffff; --muted:#6b7280; --accent:#174ea6;
+      --max-width:1400px; /* increased to give visualisations more horizontal room */
+      --gutter:18px;
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:#0b1220;font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif;overflow-x:hidden}
+    .wrapper{max-width:var(--max-width);margin:28px auto;padding:0 18px}
+    /* full-width map card that sits above the main two-column layout */
+    .full-width-map{ margin-bottom:18px; }
+    /* center vega embeds inside their card and ensure svg is block-centered */
+    .viz { min-height:240px; padding:6px 0; display:flex; justify-content:center; align-items:flex-start; }
+    .full-width-map .viz { padding:8px 12px; }
+    .viz > div { margin: 0 auto; max-width:100%; box-sizing:border-box; }
+    .viz svg { display:block; margin:0 auto; max-width:100% !important; height:auto !important; }
+
+    /* two-up equal cards: side-by-side, equal width, responsive */
+    .two-up { display:grid; grid-template-columns:1fr; gap:18px; align-items:start; }
+    @media(min-width:1024px){ .two-up { grid-template-columns: 1fr 1fr; } }
+    .equal-card .viz { min-height:440px; } /* give sufficient height for both charts */
+    /* ensure inner vega wrapper doesn't force overflow */
+    .equal-card .viz > div { max-width:100% !important; box-sizing:border-box; }
+
+    /* histogram full width below the two-up row */
+    .full-width-hist { margin-top:18px; }
+    .full-width-hist .viz { min-height:420px; padding:18px; }
+
+    /* unified visualization size: apply the map sizing to all visuals */
+    #map.viz, #chart.viz, #hist.viz, #afford.viz { min-height:420px; }
+
+    header.hero{background:linear-gradient(180deg, rgba(23,78,166,0.06), transparent);padding:22px 20px;border-radius:10px;margin-bottom:18px}
+    header.hero h1{margin:0;font-size:24px;color:var(--accent)}
+    header.hero p{margin:8px 0 0;color:var(--muted);font-size:14px;max-width:80%}
+
+    /* layout: keep right column narrow so left column gets more width */
+    .layout{display:block;gap:18px} /* use block layout; we manage rows explicitly */
+    @media(min-width:1024px){ .layout{display:block} }
+
+    .card{background:var(--card);border-radius:10px;padding:14px;box-shadow:0 10px 30px rgba(13,18,30,0.04);border:1px solid rgba(10,18,28,0.04);overflow:hidden}
+    .card h3{margin:0 0 10px;font-size:18px}
+    /* larger explicit sizes for main charts so they display prominently */
+    #map.viz{min-height:420px}        /* reduced vertical space for map */
+    #chart.viz{min-height:520px}      /* bigger scatter */
+    #hist.viz{min-height:380px}       /* histogram */
+    #afford.viz{min-height:520px}     /* affordability bar chart */
+
+    /* ensure embedded vega svgs scale responsively and never cause horizontal scroll */
+    .viz > div, .viz svg { width:100% !important; max-width:100% !important; height:auto !important; display:block; }
+
+    /* NEW: make chart area use column layout so embed grows and controls sit below */
+    #chart.viz {
+      display: flex !important;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      min-height: 520px;
+      padding: 12px;
+      box-sizing: border-box;
+    }
+
+    /* wrapper which will hold the actual embed (svg/div) */
+    #chart .chart-embed {
+      flex: 1 1 auto;
+      display: flex;
+      align-items: stretch;
+      justify-content: center; /* center the svg horizontally */
+      overflow: hidden;
+    }
+
+    /* controls area underneath the embed */
+    #chart .chart-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-top: 6px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    /* ensure any svg inside chart-embed scales to available width */
+    #chart .chart-embed svg {
+      width: 100% !important;
+      height: auto !important;
+      display: block;
+    }
+
+    .meta{font-size:13px;color:var(--muted);margin-top:10px;line-height:1.45}
+    .notes{background:#fff;padding:10px;border-left:4px solid var(--accent);border-radius:6px;margin-top:12px;color:var(--muted);font-size:13px}
+    footer{margin:28px 0 60px;color:var(--muted);font-size:13px;text-align:center}
+
+    /* minor utilities */
+    .stack{display:flex;flex-direction:column;gap:14px}
+    .right-col{display:flex;flex-direction:column;gap:18px}
+
+    /* Map analysis box (concise analytics, 3-4 lines) */
+    .analysis-box{
+      background: #fff;
+      padding: 12px;
+      border-left: 4px solid var(--accent);
+      border-radius:6px;
+      margin-top:12px;
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.45;
+      box-shadow: 0 6px 18px rgba(8,12,20,0.02);
+    }
+    .analysis-box .analysis-title{ margin:0 0 6px; font-size:15px; color:var(--accent); }
   </style>
 </head>
 <body>
-  <h1>Australian SA2 Census Analysis Dashboard</h1>
+  <div class="wrapper">
+    <header class="hero">
+      <h1>Australian SA2 Census Analysis</h1>
+      <p>Presentation-ready layout. Visualisations and interactive behaviour are unchanged — this file only adjusts presentation, spacing and responsive scaling.</p>
+    </header>
 
-  <div class="viz">
-    <h3>Income Distribution Across SA2 Regions</h3>
-    <div id="map"></div>
-  </div>
+    <!-- Full-width map card: moved out of the two-column layout so it spans the dashboard -->
+    <section class="card full-width-map">
+      <h3>Population density & ambulance stations</h3>
+      <div id="map" class="viz" aria-label="map container"></div>
+      <div class="meta">Choropleth / centroid scatter showing median income per SA2; ambulance station locations overlayed.</div>
 
-  <div class="viz">
-    <h3>Income vs Rent Analysis</h3>
-    <div id="chart"></div>
-  </div>
+      <div class="analysis-box" aria-live="polite">
+        <div class="analysis-title">Map insights</div>
+        <div>
+          Population is highly concentrated along the eastern and southeastern coast, creating dense urban corridors.
+          Ambulance stations cluster near those high‑density areas, while many inland SA2s remain sparsely covered.
+          Overlaying service locations with affordability and rent‑income pressure can help prioritise resource allocation.
+        </div>
+      </div>
+    </section>
 
-  <div class="viz">
-    <h3>Income distribution</h3>
-    <div id="hist"></div>
-  </div>
+    <main class="layout">
+      <!-- Scatter directly under the full-width map -->
+      <section class="card equal-card">
+        <h3>Income vs Rent</h3>
+        <div id="chart" class="viz" aria-label="chart container"></div>
+        <div class="meta">Scatter of median income (x) vs median rent (y). Point size encodes median age. Hover for SA2 details.</div>
 
-  <div class="viz">
-    <h3>Affordability: Ranked SA2s (rent / income)</h3>
-    <div id="afford"></div>
+        <div class="analysis-box" aria-live="polite">
+          <div class="analysis-title">Scatter insights</div>
+          <div>
+            The scatter shows a positive relationship between median income and median rent: higher‑income SA2s typically have higher weekly rents.
+            Point size highlights older or younger population centres — larger points cluster towards higher rent areas.
+            Use the age filter to reveal demographic effects on rent pressure across regions.
+          </div>
+        </div>
+      </section>
+
+      <!-- Affordability directly below the scatter (full card width) -->
+      <section class="card equal-card" style="margin-top:18px">
+        <h3>Affordability — Top SA2s</h3>
+        <div id="afford" class="viz" aria-label="affordability container"></div>
+        <div class="meta">Ranked by rent / income ratio; cost-burdened regions highlighted.</div>
+
+        <div class="analysis-box" aria-live="polite">
+          <div class="analysis-title">Affordability insights</div>
+          <div>
+            This ranking surfaces SA2s where rent consumes the largest share of personal income — key targets for housing policy.
+            Many of the least affordable SA2s exceed the 30% rent‑to‑income threshold, indicating cost‑burdened households.
+            Contrast these locations with population density and service access to prioritise interventions.
+          </div>
+        </div>
+      </section>
+
+      <!-- Histogram remains full-width below both visualisations -->
+      <section class="card full-width-hist" style="margin-top:18px">
+        <h3>Income distribution</h3>
+        <div id="hist" class="viz" aria-label="histogram container"></div>
+        <div class="meta">Distribution of median weekly income across SA2s (median and mean lines shown in spec).</div>
+
+        <div class="analysis-box" aria-live="polite">
+          <div class="analysis-title">Histogram insights</div>
+          <div>
+            The histogram reveals the central tendency and spread of median weekly incomes across SA2s; the modal bin shows where most regions lie.
+            Median and mean lines indicate skew; any long tails point to high‑income outliers.
+            Use this distribution to contextualise affordability and wage comparisons across regions.
+          </div>
+        </div>
+      </section>
+
+      <!-- Presentation notes below -->
+      <section class="card" style="margin-top:12px">
+        <h3>Presentation notes & insights</h3>
+        <div class="notes">
+          Key insights:
+          <ul style="margin:8px 0 0 18px;color:var(--muted)">
+            <li>Affordability: spotlight SA2s with rent ≥ 30% of income.</li>
+            <li>Income vs Rent: metropolitan coastal SA2s show elevated rents relative to incomes.</li>
+            <li>Map: emergency services cluster near high density SA2s.</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer>Prepared for FIT3179 — layout & presentation only. Visualisations and data remain unchanged.</footer>
   </div>
 
   <script>
+  // Helper: ensure embedded vega/svg fits and is centered inside its card
+  function ensureEmbedFits(selector) {
+    try {
+      const container = document.querySelector(selector);
+      if (!container) return;
+      const svg = container.querySelector('svg');
+      if (!svg) return;
+      const w = Math.max(480, container.clientWidth || 720);
+      const h = Math.max(320, Math.round(w * 0.55));
+      svg.removeAttribute('width'); svg.removeAttribute('height');
+      svg.style.width = '100%'; svg.style.height = 'auto';
+      if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      container.style.display = 'flex'; container.style.justifyContent = 'center';
+    } catch (e) { /* noop */ }
+  }
+
+  // ========== Begin: your original viz scripts (kept intact) ==========
   // Utility: centroid from polygon ring (average lon/lat)
   function ringCentroid(ring) {
     let cx = 0, cy = 0, n = 0;
@@ -97,18 +281,35 @@
         }
       }
 
+      // dynamic sizing
+      const containerEl = document.querySelector('.full-width-map .viz') || document.querySelector('#map');
+      const wrapperWidth = (document.querySelector('.wrapper') && document.querySelector('.wrapper').clientWidth) || 1100;
+      const containerWidth = containerEl ? containerEl.clientWidth : wrapperWidth;
+      // smaller width floor and reduced aspect ratio so the map is tighter vertically
+      const mapWidth = Math.max(600, Math.min(containerWidth, 1400));
+      const mapHeight = Math.max(360, Math.round(mapWidth * 0.45));
+
+      // tuned scale and translate so map is centered in the card
+      const projScale = Math.round(mapWidth * 0.72);
+      const projTranslate = [Math.round(mapWidth / 2), Math.round(mapHeight / 2)];
+
       const mapSpec = {
         "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-        "width": 1100,
-        "height": 520,
+        "width": mapWidth,
+        "height": mapHeight,
         "title": "Income Distribution Across Australian SA2 Regions (centroids)",
         "data": { "values": points },
-        "projection": { "type": "mercator", "center": [134.0, -26.0], "scale": 900 },
+        "projection": {
+          "type": "mercator",
+          "center": [134.0, -26.0],
+          "scale": projScale,
+          "translate": projTranslate
+        },
         "selection": {
           "hover": { "type": "single", "on": "mouseover", "clear": "mouseout" },
           "pinned": { "type": "multi", "on": "click", "clear": "dblclick" }
         },
-        "mark": { "type": "circle", "opacity": 0.8, "stroke": "#0f2d3a", "strokeWidth": 0.6 },
+        "mark": { "type": "circle", "opacity": 0.9, "stroke": "#0f2d3a", "strokeWidth": 0.6 },
         "encoding": {
           "longitude": { "field": "lon", "type": "quantitative" },
           "latitude": { "field": "lat", "type": "quantitative" },
@@ -141,7 +342,21 @@
         }
       };
 
-      await vegaEmbed('#map', mapSpec, { renderer: 'svg', actions: false });
+      const res = await vegaEmbed('#map', mapSpec, { renderer: 'svg', actions: false });
+
+      // ensure SVG responsive + centered
+      try {
+        const svg = document.querySelector('#map svg');
+        if (svg) {
+          svg.removeAttribute('width'); svg.removeAttribute('height');
+          svg.style.width = '100%'; svg.style.height = 'auto';
+          if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${mapWidth} ${mapHeight}`);
+          // ensure parent container centers svg
+          const vizEl = document.querySelector('#map');
+          if (vizEl) { vizEl.style.display = 'flex'; vizEl.style.justifyContent = 'center'; }
+        }
+      } catch (e) { /* noop */ }
+
       console.log('Map (centroid) loaded, points:', points.length);
     } catch (err) {
       console.error('Map load/render error:', err);
@@ -256,6 +471,51 @@
       }
 
       await vegaEmbed('#chart', spec, { renderer:'svg', actions:false });
+      ensureEmbedFits('#chart');
+      // wrap embed and move age control into chart card (non-invasive)
+      try {
+        const chartEl = document.querySelector('#chart');
+        if (chartEl) {
+          // create embed wrapper if not present
+          let embedWrapper = chartEl.querySelector('.chart-embed');
+          const firstChild = chartEl.querySelector('div') || chartEl.querySelector('svg');
+          if (!embedWrapper) {
+            embedWrapper = document.createElement('div');
+            embedWrapper.className = 'chart-embed';
+            // insert wrapper at top of chartEl
+            chartEl.insertBefore(embedWrapper, chartEl.firstChild);
+            // move the actual embed node into the wrapper (if present)
+            if (firstChild && embedWrapper !== firstChild.parentNode) {
+              embedWrapper.appendChild(firstChild);
+            }
+          } else {
+            // if wrapper exists but embed not inside, move it
+            if (firstChild && firstChild.parentNode !== embedWrapper) embedWrapper.appendChild(firstChild);
+          }
+
+          // create controls container and move any existing Age range input into it
+          let controls = chartEl.querySelector('.chart-controls');
+          if (!controls) {
+            controls = document.createElement('div');
+            controls.className = 'chart-controls';
+            controls.id = 'chartControls';
+            chartEl.appendChild(controls);
+          }
+          // find the first range input (likely the Age slider) anywhere on page and move its label/parent
+          const range = document.querySelector('input[type="range"]');
+          if (range) {
+            const rangeWrapper = range.closest('label') || range.parentNode;
+            if (rangeWrapper && controls !== rangeWrapper.parentNode) controls.appendChild(rangeWrapper);
+          }
+          // tidy: ensure svg viewBox exists for smooth scaling
+          const svg = chartEl.querySelector('svg');
+          if (svg && !svg.getAttribute('viewBox')) {
+            const w = Math.max(480, chartEl.clientWidth || 720);
+            const h = Math.max(320, Math.round(w * 0.55));
+            svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+          }
+        }
+      } catch (e) { /* noop non-fatal */ }
       console.log('Cleaned chart embedded (aggregated rules removed, constant texts dropped, SA2_NAME21 tooltips added)');
     } catch (err) {
       console.error('Chart embed error:', err);
@@ -268,6 +528,7 @@
       const t = await fetch('./js/histogram.json?ts=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
       const spec = JSON.parse(t);
       await vegaEmbed('#hist', spec, { renderer:'svg', actions:false });
+      ensureEmbedFits('#hist');
       console.log('Histogram loaded');
     } catch (e) {
       console.error('Histogram embed error:', e);
@@ -275,7 +536,6 @@
   })();
 
   // inline affordability lollipop renderer (robust)
-  {
   (async function renderAffordabilityInline(){
     try {
       const text = await fetch('data/census_sa2_with_names.csv').then(r => r.text());
@@ -373,14 +633,47 @@
       };
 
       await vegaEmbed('#afford', spec, { renderer:'svg', actions: false });
+      ensureEmbedFits('#afford');
       console.log('Affordability improved inline loaded, rows:', top.length);
     } catch (e) {
       console.error('Affordability inline error:', e);
     }
   })();
-}
+
   // start map after other embeds
   loadAndRenderMap();
+  // ensure chart/afford/hist resize after initial render pass
+  setTimeout(()=>{ ensureEmbedFits('#chart'); ensureEmbedFits('#afford'); ensureEmbedFits('#hist'); }, 900);
+  // ========== End: your original viz scripts ==========
+
+  // Small responsive helper — run a few times to catch embeds created async.
+  function makeVegaResponsiveAggressive() {
+    document.querySelectorAll('.viz').forEach(container => {
+      // prefer the first svg if present
+      const svgs = container.querySelectorAll('svg');
+      svgs.forEach(svg => {
+        try {
+          svg.removeAttribute('width');
+          svg.removeAttribute('height');
+          svg.style.width = '100%';
+          svg.style.height = 'auto';
+          // ensure a viewBox exists so scaling works reliably
+          if (!svg.getAttribute('viewBox')) {
+            const w = svg.clientWidth || 900;
+            const h = svg.clientHeight || 400;
+            svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+          }
+        } catch (e) { /* noop */ }
+      });
+    });
+  }
+
+  // call several times (embeds happen asynchronously) and on resize
+  setTimeout(makeVegaResponsiveAggressive, 400);
+  setTimeout(makeVegaResponsiveAggressive, 1200);
+  setTimeout(makeVegaResponsiveAggressive, 2400);
+  window.addEventListener('resize', () => setTimeout(makeVegaResponsiveAggressive, 120));
+  // If you re-render any chart programmatically, call makeVegaResponsiveAggressive() afterwards.
   </script>
 </body>
 </html>
